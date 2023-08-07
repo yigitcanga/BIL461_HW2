@@ -68,27 +68,19 @@ int main(int argc, char *argv[]) {
         page_table[page_index] = strdup(
                 line);                      // her satırı page table'a kopyalama#include <stdio.h>
 
-        fclose(file);
-
-        sendToScheduler(argv[1], page_table, page_index);
-
-        /* page table doğru mu testi
-        int line_number = 5;
-        if (line_number < page_index) {
-            char *line_content = page_table[line_number];
-            printf("Line %d: %s\n", line_number + 1, line_content);
-        } else {
-            printf("Invalid line number.\n");
-        }
-
-        */
     }
-        // page table unutma
-        for (int i = 0; i < page_index; i++) {
-            free(page_table[i]);
-        }
 
-            int page_number;
+    fclose(file);
+
+    sendToScheduler(argv[1], page_table, page_index);
+
+    // page table unutma
+    for (int i = 0; i < page_index; i++) {
+        free(page_table[i]);
+    }
+
+    int page_number;
+
     while (1) {
         printf("Enter the page number (-1 to exit): ");
         scanf("%d", &page_number);
