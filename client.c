@@ -65,7 +65,8 @@ int main(int argc, char *argv[]) {
         if (line_length > 0 && line[line_length - 1] == '\n') {
             line[line_length - 1] = '\0';
         }
-        page_table[page_index] = strdup(line);                      // her satırı page table'a kopyalama#include <stdio.h>
+        page_table[page_index] = strdup(
+                line);                      // her satırı page table'a kopyalama#include <stdio.h>
 
         fclose(file);
 
@@ -81,7 +82,7 @@ int main(int argc, char *argv[]) {
         }
 
         */
-
+    }
         // page table unutma
         for (int i = 0; i < page_index; i++) {
             free(page_table[i]);
@@ -125,5 +126,5 @@ int main(int argc, char *argv[]) {
     }
 
         return 0;
-    }
+
 }
