@@ -87,7 +87,42 @@ int main(int argc, char *argv[]) {
             free(page_table[i]);
         }
 
-        //buraya while(1) kodu gelecek
+            int page_number;
+    while (1) {
+        printf("Enter the page number (-1 to exit): ");
+        scanf("%d", &page_number);
+        if (page_number == -1) {
+            break; // Exit the loop and terminate the program
+        }
+
+        // Send the page number to the scheduler
+        key_t server_key = ftok("/tmp", 0);
+        int server_mq_id = msgget(server_key, 0);
+        if (server_mq_id == -1) {
+            perror("msgget failed");
+            exit(1);
+        }
+
+        // Prepare the message to send to the scheduler
+        long mtype = getpid(); // Using the process ID as a unique identifier for the client
+        char mtext[MSG_SIZE];
+        snprintf(mtext, MSG_SIZE, "%d", page_number);
+
+        // Send the page number to the scheduler
+        if (msgsnd(server_mq_id, &mtext, sizeof(mtext), 0) == -1) {
+            perror("msgsnd failed");
+            exit(1);
+        }
+
+        // Receive the response from the scheduler
+        if (msgrcv(server_mq_id, &mtext, sizeof(mtext), mtype, 0) == -1) {
+            perror("msgrcv failed");
+            exit(1);
+        }
+
+        // Print the response received from the scheduler
+        printf("Response from scheduler: %s\n", mtext);
+    }
 
         return 0;
     }
