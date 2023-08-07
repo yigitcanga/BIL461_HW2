@@ -85,10 +85,9 @@ int main(int argc, char *argv[]) {
         printf("Enter the page number (-1 to exit): ");
         scanf("%d", &page_number);
         if (page_number == -1) {
-            break; // Exit the loop and terminate the program
+            break;
         }
 
-        // Send the page number to the scheduler
         key_t server_key = ftok("/tmp", 0);
         int server_mq_id = msgget(server_key, 0);
         if (server_mq_id == -1) {
@@ -96,24 +95,23 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
 
-        // Prepare the message to send to the scheduler
-        long mtype = getpid(); // Using the process ID as a unique identifier for the client
+        long mtype = getpid();
         char mtext[MSG_SIZE];
         snprintf(mtext, MSG_SIZE, "%d", page_number);
 
-        // Send the page number to the scheduler
+        // page no yollama
         if (msgsnd(server_mq_id, &mtext, sizeof(mtext), 0) == -1) {
             perror("msgsnd failed");
             exit(1);
         }
 
-        // Receive the response from the scheduler
+        // scheduler dan gelen yanıt
         if (msgrcv(server_mq_id, &mtext, sizeof(mtext), mtype, 0) == -1) {
             perror("msgrcv failed");
             exit(1);
         }
 
-        // Print the response received from the scheduler
+        // gelen yanıtı basma
         printf("Response from scheduler: %s\n", mtext);
     }
 
