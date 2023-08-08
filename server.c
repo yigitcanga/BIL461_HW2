@@ -8,7 +8,7 @@
 #define FRAME_SIZE 512
 #define TOTAL_FRAMES 1000
 
-/*Continious Allocation*/
+/*Not so Continious Allocation*/
 struct page_table_entry
 {
     int frame_num;
@@ -38,24 +38,25 @@ int main()
 {
 
     printf("Server Started..\n");
-    
+
     // remove message queue
-    
+
     key_t server_key = ftok("/tmp", 0);
     int msgid = msgget(server_key, 0);
     msgctl(msgid, IPC_RMID, NULL);
-    
+
     char *main_memory = (char *)malloc(TOTAL_FRAMES * FRAME_SIZE);
-    struct page_table_entry page_table[PAGE_TABLE_SIZE] ={{0}};
-    
+    struct page_table_entry page_table[PAGE_TABLE_SIZE] = {{0}};
+
     int entry_count = 0;
-    
+    int entry_index = 0;
+
     if (main_memory == NULL)
     {
         perror("main_memory allocation failed");
         exit(1);
     }
-    
+
     // initilize server
 
     msgid = msgget(server_key, IPC_CREAT | 0666);
@@ -70,7 +71,7 @@ int main()
     char *file_content;
     int frame_length = 0;
     int page_index = 0;
-    
+
     struct msg_buffer message;
     message.action_type = 0;
     while (message.action_type != 4)
@@ -78,13 +79,12 @@ int main()
 
         while (message.action_type != 4)
         {
-            
+
             if (msgrcv(msgid, &message, sizeof(message), 0, 0) == -1)
             {
                 perror("msgrcv failed");
                 exit(1);
             }
-            
 
             if (message.action_type == 0)
             {
@@ -96,41 +96,10 @@ int main()
                 }
 
                 frame_length = message.frame_length;
-                
-                // try to find empty frame
-                // Continious allocation
-                int frame_start_index = -1;
-                printf("HERE3 ===>\n");
-                for (int i = 0; i <= TOTAL_FRAMES - frame_length; i++)
-                {
-                    
-                    if (page_table[i].start_index == 0)
-                    {
-                        frame_start_index = i;
-                        break;
-                    }
 
-                    
+                entry_count++;
 
-                }
-                printf("HERE3.5 ===>\n");
-                if (frame_start_index == -1)
-                {
-                    printf("No empty frame\n");
-                    continue;
-                }
-          
-                // Register to page table
-                for (int i = frame_start_index; i < frame_start_index + frame_length; i++)
-                {
-                    page_table[i].start_index = frame_start_index;
-                    page_table[i].frame_num = i - frame_start_index; // Use a unique identifier for each frame
-                    strcpy(page_table[i].process_name, process_name);
-                }
-                printf("HERE2 ===>");
-                entry_count += frame_length;
-
-                int frame_number = page_index;
+                int frame_number = entry_index;
 
                 if (frame_number >= 0 && frame_number < TOTAL_FRAMES)
                 {
@@ -142,8 +111,24 @@ int main()
                 {
                     printf("Invalid frame number.\n");
                 }
+                // Register to page table
+                page_table[entry_index].frame_num = frame_length;
+                strcpy(page_table[entry_index].process_name, process_name);
 
-                page_index++;
+                if (entry_index == 0)
+                {
+                    page_table[entry_index].start_index = entry_index;
+                }
+                else if (strcmp(page_table[entry_index - 1].process_name, page_table[entry_index].process_name) == 0)
+                {
+                    page_table[entry_index].start_index = page_table[entry_index - 1].start_index;
+                }
+                else
+                {
+                    page_table[entry_index].start_index = entry_index;
+                }
+
+                entry_index++;
                 printf("\nRegistering %s : %d\n", process_name, page_index);
                 continue;
             }
@@ -157,17 +142,11 @@ int main()
                 memcpy(frame_content, main_memory + (page_index * FRAME_SIZE), FRAME_SIZE);
                 frame_content[FRAME_SIZE - 1] = '\0';
 
-                //check if frame is allocated by the process name and frame index
-                int found = 0;
-                for (int i = 0; i < PAGE_TABLE_SIZE; i++)
-                {
-                    if (page_table[i].frame_num == page_index && strcmp(page_table[i].process_name, process_name) == 0)
-                    {
-                        found = 1;
-                        break;
-                    }
-                }
-                
+                // check if frame is allocated by the process name and frame index
+                int found = -1;
+                if (strcmp(page_table[page_index].process_name, process_name) == 0)
+                    found = 1;
+                printf("Found %d\n", found);
                 // send message to client
 
                 message.msg_type = 1;
@@ -181,9 +160,7 @@ int main()
                     exit(1);
                 }
 
-                
-               
-                if (!found)
+                if (found < 0)
                 {
                     printf("Frame is not allocated by the process\n");
                     strncpy(message.file_content, "Frame is not allocated by the process", sizeof(message.file_content) - 1);
@@ -196,7 +173,6 @@ int main()
                     message.file_content[sizeof(message.file_content) - 1] = '\0';
                     printf("%s", message.file_content);
                 }
-
 
                 message.msg_type = 1;
                 // sleep(0.1);
