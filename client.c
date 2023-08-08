@@ -5,34 +5,66 @@
 #include <sys/msg.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <signal.h>
 
-#define PAGE_TABLE_SIZE 128 // 512 bayt / 4 (4-byte giriş)
+void sendToScheduler(char* processName, char* page_table[], int page_index);
 
-void sendToScheduler(const char* processName, char* page_table[], int page_index) {
+#define PAGE_SIZE 512 
+#define MSG_SIZE 512
+
+
+/*
+action_type
+0-Register
+1-Read
+2-Delete
+3-End
+4-terminate
+*/
+struct msg_buffer {
+    long msg_type;
+    char process_name[25];
+    char file_content[PAGE_SIZE];
+    int action_type;
+    int frame_index;
+    int frame_length;
+};
+
+void sendToScheduler(char* processName, char* page_table[], int page_index) {
+   
     key_t server_key = ftok("/tmp", 0);
+
     int server_mq_id = msgget(server_key, 0);
+
     if (server_mq_id == -1) {
         perror("msgget failed");
         exit(1);
     }
 
-    // process name gönderme
-    if (msgsnd(server_mq_id, processName, strlen(processName) + 1, 0) == -1) {
-        perror("msgsnd failed");
-        exit(1);
-    }
+    struct msg_buffer message;
+    message.msg_type = 1;
+    message.action_type = 0;//register
+    message.frame_length = page_index;
 
-    // page table gönderme
-    for (int i = 0; i < page_index; i++) {
-        if (msgsnd(server_mq_id, page_table[i], strlen(page_table[i]) + 1, 0) == -1) {
+    strcpy(message.process_name, processName);
+    for (int i = 0; i < page_index; i++) {        
+        
+        memcpy(message.file_content, page_table[i], sizeof(message.file_content)-1);
+
+        message.file_content[PAGE_SIZE-1] = '\0';
+
+        message.frame_index = i;
+
+        if (msgsnd(server_mq_id, &message, sizeof(message),0) == -1) {
+        
             perror("msgsnd failed");
             exit(1);
         }
+        printf("one time done\n");
     }
 
-    // page tableın bittiğini belirten işaret gönderme
-    if (msgsnd(server_mq_id, "END_MARKER", strlen("END_MARKER") + 1, 0) == -1) {
+    message.action_type = 3;
+    // page table'ın bittiğini belirten işaret gönderme
+    if (msgsnd(server_mq_id, &message, sizeof(message) , 0) == -1) {
         perror("msgsnd failed");
         exit(1);
     }
@@ -47,9 +79,14 @@ int main(int argc, char *argv[]) {
     char *processName = argv[1];
     char *filename = argv[2];
 
+    //remove message queue
+    key_t client_key = ftok(processName, 0);
+    int client_mq_id = msgget(client_key, 0);
+    msgctl(client_mq_id, IPC_RMID, NULL);
+
     FILE *file;
-    char line[256];
-    char *page_table[PAGE_TABLE_SIZE] = {0};
+    char line[PAGE_SIZE];
+    char *page_table[PAGE_SIZE] = {""};
     int page_index = 0;
 
     file = fopen(filename, "r");
@@ -59,62 +96,100 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    while (fgets(line, sizeof(line), file) != NULL) {      // dosyadaki verileri satır satır okuma
-        int line_length = strlen(line);
-
-        if (line_length > 0 && line[line_length - 1] == '\n') {
-            line[line_length - 1] = '\0';
-        }
-        page_table[page_index] = strdup(
-                line);                      // her satırı page table'a kopyalama#include <stdio.h>
-
+    size_t bytes_read = fread(line, sizeof(char), sizeof(line), file);
+    if (bytes_read == 0) {
+        printf("Error reading the file.\n");
+        return 1;
     }
+
+    while (bytes_read > 0) {
+        page_table[page_index] = strdup(line);
+        page_index++;
+        bytes_read = fread(line, sizeof(char), sizeof(line), file);
+    }
+    
 
     fclose(file);
 
+    printf("Page table of %s:\n", processName);
+    printf("%d\n",page_index);
     sendToScheduler(argv[1], page_table, page_index);
-
+    printf("Page table sent to scheduler.\n");
     // page table unutma
     for (int i = 0; i < page_index; i++) {
         free(page_table[i]);
     }
 
     int page_number;
+    client_mq_id = msgget(client_key, 0666 | IPC_CREAT);
+    if (client_mq_id == -1) {
+        perror("msgget failed");
+        exit(1);
+    }
 
+
+             
+    key_t server_key = ftok("/tmp", 0);
+    int server_mq_id = msgget(server_key, 0);
+    if (server_mq_id == -1) {
+        perror("msgget failed");
+        exit(1);
+    }
+        
+    struct msg_buffer message;
+    message.msg_type = 1;
+    message.action_type = 1;//read
+    message.frame_index = page_number;
+    strcpy(message.process_name, processName);
     while (1) {
         printf("Enter the page number (-1 to exit): ");
         scanf("%d", &page_number);
         if (page_number == -1) {
+
+            message.action_type = 2;//delete
+            message.frame_index = page_number;
+            
+            // page no yollama
+            if (msgsnd(server_mq_id, &message, sizeof(message), 0) == -1) {
+                perror("msgsnd failed");
+                exit(1);
+            }
+
+
+
             break;
         }
 
-        key_t server_key = ftok("/tmp", 0);
-        int server_mq_id = msgget(server_key, 0);
-        if (server_mq_id == -1) {
-            perror("msgget failed");
-            exit(1);
-        }
 
-        long mtype = getpid();
-        char mtext[MSG_SIZE];
-        snprintf(mtext, MSG_SIZE, "%d", page_number);
+        
 
+  
+
+
+ 
+
+
+        
+        message.action_type = 1;
+        message.frame_index = page_number;
         // page no yollama
-        if (msgsnd(server_mq_id, &mtext, sizeof(mtext), 0) == -1) {
+        if (msgsnd(server_mq_id, &message, sizeof(message), 0) == -1) {
             perror("msgsnd failed");
             exit(1);
         }
 
+  
         // scheduler dan gelen yanıt
-        if (msgrcv(server_mq_id, &mtext, sizeof(mtext), mtype, 0) == -1) {
+        if (msgrcv(client_mq_id, &message, sizeof(message), 0, 0) == -1) {
             perror("msgrcv failed");
             exit(1);
         }
-
+     
         // gelen yanıtı basma
-        printf("Response from scheduler: %s\n", mtext);
+        printf("Response from scheduler: %s\n", message.file_content);
     }
 
-        return 0;
+    msgctl(client_mq_id, IPC_RMID, NULL);
+    return 0;
 
 }
